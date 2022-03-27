@@ -3,9 +3,9 @@ name = "gst-plugin-vosk"
 version = "0.1.0"
 edition = "2021"
 authors = ["Rafael Caricio <rafael@caricio.com>"]
-repository = ""
+repository = "https://github.com/rafaelcaricio/gst-plugin-vosk"
 license = "MPL-2.0"
-description = "plugin"
+description = "GStreamer plugin for speech to text using the Vosk Toolkit."
 build = "build.rs"
 
 [dependencies]
