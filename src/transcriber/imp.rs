@@ -399,7 +399,7 @@ impl Transcriber {
 
                     let transcript: Transcript = match serde_json::from_str(&payload) {
                         Ok(transcript) => transcript,
-                        Err(err) => {
+                        Err(_) => {
                             // The payload is still not a final transcript, so we just ignore it
                             return Ok(());
                         }
@@ -750,11 +750,6 @@ impl Transcriber {
         drop(settings);
         drop(state);
 
-        // Set up the server to handle the incoming audio sample rate
-        let in_caps = self.sinkpad.current_caps().unwrap();
-        let s = in_caps.structure(0).unwrap();
-        let sample_rate = s.get::<i32>("rate").unwrap();
-
         let (ws, _) = {
             let _enter = RUNTIME.enter();
             futures::executor::block_on(connect_async(url)).map_err(|err| {
@@ -763,24 +758,38 @@ impl Transcriber {
             })?
         };
 
-        let (mut ws_sink, mut ws_stream) = ws.split();
-
-        let config = Configuration::new(sample_rate);
-        let packet = serde_json::to_vec(&config).unwrap();
-        ws_sink.send(Message::Binary(packet)).await.map_err(|err| {
-            gst_error!(
-                CAT,
-                obj: element,
-                "Failed to configure Vosk server for the expected sample rate: {}",
-                err
-            );
-            gst::FlowError::Error
-        })?;
+        let (ws_sink, mut ws_stream) = ws.split();
 
         *self.ws_sink.borrow_mut() = Some(Box::pin(ws_sink));
 
         let element_weak = element.downgrade();
         let recv_handle = async move {
+            // First, send configuration to the Vosk server
+            if let Some(element) = element_weak.upgrade() {
+                let transcribe = element.imp();
+                let mut sender = transcribe.state.lock().unwrap().sender.clone();
+
+                // Set up the server to handle the incoming audio sample rate
+                let in_caps = transcribe.sinkpad.current_caps().unwrap();
+                let s = in_caps.structure(0).unwrap();
+                let sample_rate = s.get::<i32>("rate").unwrap();
+
+                let config = Configuration::new(sample_rate);
+                let packet = serde_json::to_vec(&config).unwrap();
+                let msg = Message::Binary(packet);
+
+                if let Some(sender) = sender.as_mut() {
+                    if sender.send(msg).await.is_err() {
+                        gst_error!(
+                            CAT,
+                            obj: &element,
+                            "Failed to configure Vosk server for the expected sample rate",
+                        );
+
+                        return;
+                    }
+                }
+            }
 
             while let Some(element) = element_weak.upgrade() {
                 let transcribe = element.imp();
