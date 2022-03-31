@@ -44,7 +44,7 @@ static RUNTIME: Lazy<runtime::Runtime> = Lazy::new(|| {
         .unwrap()
 });
 
-const DEFAULT_LATENCY: gst::ClockTime = gst::ClockTime::from_seconds(5);
+const DEFAULT_LATENCY: gst::ClockTime = gst::ClockTime::from_seconds(30);
 const DEFAULT_SERVER_ADDRESS: &str = "ws://localhost:2700";
 const GRANULARITY: gst::ClockTime = gst::ClockTime::from_mseconds(100);
 
