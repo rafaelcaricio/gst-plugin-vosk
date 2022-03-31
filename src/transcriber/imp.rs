@@ -654,18 +654,20 @@ impl Transcriber {
 
                 gst_trace!(CAT, obj: element, "Sending {} bytes", data.len());
 
-                ws_sink
-                    .send(Message::Binary(data.to_vec()))
-                    .await
-                    .map_err(|err| {
-                        gst_error!(
-                            CAT,
-                            obj: element,
-                            "Failed sending audio packet to server: {}",
-                            err
-                        );
-                        gst::FlowError::Error
-                    })?;
+                for chunk in data.chunks(8_000) {
+                    ws_sink
+                        .send(Message::Binary(chunk.to_vec()))
+                        .await
+                        .map_err(|err| {
+                            gst_error!(
+                                CAT,
+                                obj: element,
+                                "Failed sending audio packet to server: {}",
+                                err
+                            );
+                            gst::FlowError::Error
+                        })?;
+                }
             } else {
                 gst_info!(
                     CAT,
@@ -767,16 +769,13 @@ impl Transcriber {
             })?
         };
 
-        let (ws_sink, mut ws_stream) = ws.split();
-
-        *self.ws_sink.borrow_mut() = Some(Box::pin(ws_sink));
+        let (mut ws_sink, mut ws_stream) = ws.split();
 
         let element_weak = element.downgrade();
         let recv_handle = async move {
             // First, send configuration to the Vosk server
             if let Some(element) = element_weak.upgrade() {
                 let transcribe = element.imp();
-                let mut sender = transcribe.state.lock().unwrap().sender.clone();
 
                 // Set up the server to handle the incoming audio sample rate
                 let in_caps = transcribe.sinkpad.current_caps().unwrap();
@@ -791,22 +790,18 @@ impl Transcriber {
                 );
 
                 let config = Configuration::new(sample_rate);
-                let packet = serde_json::to_vec(&config).unwrap();
-                let msg = Message::Binary(packet);
+                let packet = serde_json::to_string(&config).unwrap();
+                if ws_sink.send(Message::Text(packet)).await.is_err() {
+                    gst_error!(
+                        CAT,
+                        obj: &element,
+                        "Failed to configure Vosk server for the expected sample rate",
+                    );
 
-                if let Some(sender) = sender.as_mut() {
-                    if sender.send(msg).await.is_err() {
-                        gst_error!(
-                            CAT,
-                            obj: &element,
-                            "Failed to configure Vosk server for the expected sample rate",
-                        );
-
-                        return;
-                    }
-                } else {
                     return;
                 }
+
+                *transcribe.ws_sink.borrow_mut() = Some(Box::pin(ws_sink));
             }
 
             while let Some(element) = element_weak.upgrade() {
