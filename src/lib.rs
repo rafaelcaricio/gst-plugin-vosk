@@ -6,6 +6,8 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+extern crate core;
+
 use gst::glib;
 
 mod transcriber;
