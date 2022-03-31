@@ -1032,7 +1032,7 @@ impl ElementImpl for Transcriber {
 
             let sink_caps = gst::Caps::builder("audio/x-raw")
                 .field("format", "S16LE")
-                .field("rate", 16000)
+                .field("rate", gst::IntRange::new(8_000_i32, 48_000))
                 .field("channels", 1)
                 .build();
             let sink_pad_template = gst::PadTemplate::new(
