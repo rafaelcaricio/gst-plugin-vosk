@@ -46,6 +46,8 @@ static RUNTIME: Lazy<runtime::Runtime> = Lazy::new(|| {
 
 const DEFAULT_LATENCY: gst::ClockTime = gst::ClockTime::from_seconds(30);
 const DEFAULT_SERVER_ADDRESS: &str = "ws://localhost:2700";
+const DEFAULT_MIN_CONFIDENCE_THRESHOLD: f64 = 0.7;
+
 const GRANULARITY: gst::ClockTime = gst::ClockTime::from_mseconds(100);
 
 #[derive(Debug, Clone)]
@@ -55,6 +57,9 @@ struct Settings {
 
     /// The address of the gRPC server to connect to for transcription.
     server_address: String,
+
+    /// Transcription confidence threshold. Anything below this will be ignored.
+    min_confidence_threshold: f64,
 }
 
 impl Default for Settings {
@@ -62,6 +67,7 @@ impl Default for Settings {
         Settings {
             latency: DEFAULT_LATENCY,
             server_address: DEFAULT_SERVER_ADDRESS.to_string(),
+            min_confidence_threshold: DEFAULT_MIN_CONFIDENCE_THRESHOLD,
         }
     }
 }
@@ -291,7 +297,13 @@ impl Transcriber {
         state: &mut State,
         transcription: &Vec<WordInfo>,
     ) {
+        let min_confidence_threshold = self.settings.lock().unwrap().min_confidence_threshold;
         for item in transcription.iter() {
+            // Skip items with a confidence below the threshold
+            if item.confidence < min_confidence_threshold {
+                continue;
+            }
+
             let start_time = gst::ClockTime::from_nseconds((item.start * 1_000_000_000.0) as u64);
             let end_time = gst::ClockTime::from_nseconds((item.end * 1_000_000_000.0) as u64);
 
@@ -950,6 +962,15 @@ impl ObjectImpl for Transcriber {
                     Some(DEFAULT_SERVER_ADDRESS),
                     glib::ParamFlags::READWRITE | gst::PARAM_FLAG_MUTABLE_READY,
                 ),
+                glib::ParamSpecDouble::new(
+                    "min-confidence",
+                    "Minimum Confidence",
+                    "Transcription minimum confidence threshold. Anything below this will be ignored.",
+                    0.0,
+                    1.0,
+                    DEFAULT_MIN_CONFIDENCE_THRESHOLD,
+                    glib::ParamFlags::READWRITE | gst::PARAM_FLAG_MUTABLE_READY,
+                ),
             ]
         });
 
@@ -982,6 +1003,10 @@ impl ObjectImpl for Transcriber {
                 let mut settings = self.settings.lock().unwrap();
                 settings.server_address = value.get().expect("type checked upstream")
             }
+            "min-confidence" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.min_confidence_threshold = value.get().expect("type checked upstream")
+            }
             _ => unimplemented!(),
         }
     }
@@ -995,6 +1020,10 @@ impl ObjectImpl for Transcriber {
             "server-address" => {
                 let settings = self.settings.lock().unwrap();
                 settings.server_address.to_value()
+            }
+            "min-confidence" => {
+                let settings = self.settings.lock().unwrap();
+                settings.min_confidence_threshold.to_value()
             }
             _ => unimplemented!(),
         }
