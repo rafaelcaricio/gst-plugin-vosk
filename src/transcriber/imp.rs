@@ -505,6 +505,8 @@ impl Transcriber {
             }
 
             let _ = self.srcpad.stop_task();
+
+            gst_trace!(CAT, obj: element, "Dropped internal element sender and stopped src pad task..");
         }
 
         Ok(())
@@ -679,6 +681,8 @@ impl Transcriber {
                             );
                             gst::FlowError::Error
                         })?;
+
+                    gst_trace!(CAT, obj: element, "Sent a chunk of {} bytes from a total of {} bytes", chunk.len(), data.len())
                 }
             } else {
                 gst_info!(
@@ -838,12 +842,15 @@ impl Transcriber {
 
                 let mut sender = transcribe.state.lock().unwrap().sender.clone();
 
+                gst_trace!(CAT, obj: &element, "Handling message: {}", msg);
+
                 if let Some(sender) = sender.as_mut() {
                     if let Err(err) = sender.send(msg).await {
                         gst_error!(CAT, obj: &element, "Stopped RECV handler: {}", err);
                         break;
                     }
                 } else {
+                    gst_error!(CAT, obj: &element, "Failed to capture element's internal sender, stopping..");
                     break;
                 }
             }
