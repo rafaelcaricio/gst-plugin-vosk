@@ -1,3 +1,5 @@
+# This project has moved upstream to the GStreamer Rust Plugins: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/merge_requests/729
+
 # Vosk Speech Recognition GStreamer Plugin
 
 Transcription of speech using [Vosk Toolkit](https://alphacephei.com/vosk/). Can be used to generate subtitles for
